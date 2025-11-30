@@ -122,7 +122,7 @@ const RegisterPage = () => {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="John Doe"
+                  placeholder="Iqbal"
                   className="w-full pl-12 pr-4 py-3 bg-neutral-900/50 border border-neutral-800/50 rounded-xl text-white placeholder-neutral-500 focus:outline-none focus:border-purple-500/50 transition-colors"
                   disabled={loading}
                 />

@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Mail, Lock, LogIn, Loader2, AlertCircle, ArrowLeft, UserCircle, WifiOff } from "lucide-react";
+import {
+  Mail,
+  Lock,
+  LogIn,
+  Loader2,
+  AlertCircle,
+  ArrowLeft,
+  UserCircle,
+  WifiOff,
+} from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 const LoginPage = () => {
@@ -61,7 +70,9 @@ const LoginPage = () => {
         {isOffline && (
           <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-2">
             <WifiOff className="w-5 h-5 text-amber-400" />
-            <p className="text-amber-400 text-sm">You are offline. Use Guest Mode to continue.</p>
+            <p className="text-amber-400 text-sm">
+              You are offline. Use Guest Mode to continue.
+            </p>
           </div>
         )}
 
@@ -72,9 +83,7 @@ const LoginPage = () => {
               DevRank
             </h1>
           </Link>
-          <p className="text-neutral-400 mt-2">
-            Welcome back! Please login to continue.
-          </p>
+          <p className="text-neutral-400 mt-2">Please login to continue.</p>
         </div>
 
         {/* Login Card */}
@@ -171,7 +180,9 @@ const LoginPage = () => {
               <div className="w-full border-t border-neutral-800/50"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-neutral-900/80 text-neutral-400">Or continue with</span>
+              <span className="px-4 bg-neutral-900/80 text-neutral-400">
+                Or continue with
+              </span>
             </div>
           </div>
 
@@ -181,11 +192,12 @@ const LoginPage = () => {
             className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 hover:border-neutral-600/50 rounded-xl text-white font-semibold transition-all hover:scale-[1.02]"
           >
             <UserCircle className="w-5 h-5" />
-            Continue as Guest (Offline Mode)
+            Continue as Guest
           </button>
 
           <p className="text-xs text-neutral-500 text-center mt-3">
-            Guest mode works offline. Progress is saved locally on this device only.
+            Guest mode works offline. Progress is saved locally on this device
+            only.
           </p>
 
           {/* Register Link */}
