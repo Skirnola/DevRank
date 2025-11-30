@@ -8,23 +8,32 @@ import {
   Loader2,
   Play,
   Heart,
+  AlertCircle,
 } from "lucide-react";
 import challengeService from "../services/challengeService";
+import CodeEditor from "../components/CodeEditor";
+import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabase";
 
 const ChallengeDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, profile, isAuthenticated, isGuest, updateGuestProfile } =
+    useAuth();
+
   const [challenge, setChallenge] = useState(null);
   const [loading, setLoading] = useState(true);
   const [solution, setSolution] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [alreadyCompleted, setAlreadyCompleted] = useState(false);
 
   useEffect(() => {
     fetchChallenge();
     checkIfFavorite();
-  }, [id]);
+    checkIfCompleted();
+  }, [id, user]);
 
   const fetchChallenge = async () => {
     try {
@@ -32,9 +41,28 @@ const ChallengeDetailPage = () => {
       const data = await challengeService.getChallengeById(id);
       setChallenge(data);
 
-      // Load starter code if available
+      // Load starter code if available and clean it up
       if (data?.starter_code) {
-        setSolution(data.starter_code);
+        // Remove everything after the opening brace on line 1, keep only the function signature
+        const cleanCode = data.starter_code
+          .split("\n")
+          .map((line, index) => {
+            // First line - remove everything after the opening brace
+            if (index === 0 && line.includes("{")) {
+              return line.substring(0, line.indexOf("{") + 1);
+            }
+            // Remove lines with color codes or "Your code here" comments
+            if (line.includes("color:") || line.includes("Your code here")) {
+              return "";
+            }
+            return line;
+          })
+          .filter((line) => line !== "") // Remove empty lines we created
+          .join("\n");
+
+        setSolution(cleanCode);
+      } else {
+        setSolution("");
       }
     } catch (error) {
       console.error("Error fetching challenge:", error);
@@ -42,6 +70,39 @@ const ChallengeDetailPage = () => {
       navigate("/challenges");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkIfCompleted = async () => {
+    if (!isAuthenticated) return;
+
+    try {
+      if (isGuest) {
+        // Check localStorage for guest mode
+        const guestSubmissions = JSON.parse(
+          localStorage.getItem("devrank_guest_submissions") || "[]"
+        );
+        const completed = guestSubmissions.some(
+          (sub) =>
+            sub.challenge_id === parseInt(id) && sub.status === "completed"
+        );
+        setAlreadyCompleted(completed);
+      } else {
+        // Check Supabase for real users
+        const { data, error } = await supabase
+          .from("submissions")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("challenge_id", id)
+          .in("status", ["completed", "accepted"]) // ← Check both statuses
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          setAlreadyCompleted(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking completion:", error);
     }
   };
 
@@ -82,21 +143,45 @@ const ChallengeDetailPage = () => {
   };
 
   const handleSubmit = async () => {
+    // Check if logged in
+    if (!isAuthenticated) {
+      alert("Please login to submit solutions!");
+      navigate("/login", { state: { from: { pathname: `/challenge/${id}` } } });
+      return;
+    }
+
     if (!solution.trim()) {
       alert("Please write your solution first!");
       return;
     }
 
+    // Check for duplicate submission
+    if (alreadyCompleted) {
+      const confirm = window.confirm(
+        "You've already completed this challenge. Submit again? (No additional points)"
+      );
+      if (!confirm) return;
+    }
+
     setSubmitting(true);
 
     try {
-      // TODO: Replace with real user ID when auth is implemented
-      const userId = "mock-user-id";
-      await challengeService.submitSolution(id, solution, userId);
+      if (isGuest) {
+        // Guest mode submission
+        await handleGuestSubmission();
+      } else {
+        // Real user submission to Supabase
+        await handleRealSubmission();
+      }
+
       setSubmitted(true);
 
       setTimeout(() => {
-        alert("Solution submitted successfully! 🎉");
+        const earnedPoints = alreadyCompleted ? 0 : challenge.points;
+        const message = alreadyCompleted
+          ? "Solution submitted! (Already completed - no additional points)"
+          : `Solution submitted successfully! You earned ${earnedPoints} points! 🎉`;
+        alert(message);
         navigate("/history");
       }, 500);
     } catch (error) {
@@ -104,6 +189,81 @@ const ChallengeDetailPage = () => {
       alert("Failed to submit solution. Please try again.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleGuestSubmission = async () => {
+    // Save to localStorage
+    const guestSubmissions = JSON.parse(
+      localStorage.getItem("devrank_guest_submissions") || "[]"
+    );
+
+    const newSubmission = {
+      id: Date.now(),
+      challenge_id: parseInt(id),
+      challenge_title: challenge.title,
+      code: solution,
+      status: "completed",
+      points: alreadyCompleted ? 0 : challenge.points,
+      submitted_at: new Date().toISOString(),
+    };
+
+    guestSubmissions.push(newSubmission);
+    localStorage.setItem(
+      "devrank_guest_submissions",
+      JSON.stringify(guestSubmissions)
+    );
+
+    // Update guest profile if first completion
+    if (!alreadyCompleted) {
+      const currentProfile = JSON.parse(
+        localStorage.getItem("devrank_guest")
+      ).profile;
+      const newPoints = currentProfile.points + challenge.points;
+      const newCompletedCount = currentProfile.completed_challenges + 1;
+
+      // Calculate new badge
+      let newBadge = "Beginner";
+      if (newPoints >= 200) newBadge = "Expert";
+      else if (newPoints >= 100) newBadge = "Advanced";
+      else if (newPoints >= 50) newBadge = "Intermediate";
+
+      updateGuestProfile({
+        points: newPoints,
+        completed_challenges: newCompletedCount,
+        badge: newBadge,
+      });
+    }
+  };
+
+  const handleRealSubmission = async () => {
+    try {
+      console.log("🚀 Submitting to Supabase...");
+      console.log("User ID:", user.id);
+      console.log("Challenge ID:", id);
+      console.log("Solution:", solution);
+
+      // Submit to Supabase with CORRECT column names
+      const { data, error: submitError } = await supabase
+        .from("submissions")
+        .insert({
+          user_id: user.id,
+          challenge_id: id, // This is from URL params
+          solution: solution, // ← Your table uses 'solution' not 'code'
+          status: "completed",
+          language: "javascript",
+        })
+        .select();
+
+      if (submitError) {
+        console.error("❌ Submission error:", submitError);
+        throw submitError;
+      }
+
+      console.log("✅ Submission successful:", data);
+    } catch (error) {
+      console.error("💥 Error in handleRealSubmission:", error);
+      throw error;
     }
   };
 
@@ -124,6 +284,38 @@ const ChallengeDetailPage = () => {
 
   return (
     <div className="min-h-screen bg-neutral-950 relative overflow-hidden">
+      <style>{`
+        /* Modern scrollbar styling for challenge panels */
+        .modern-scroll::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        
+        .modern-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        
+        .modern-scroll::-webkit-scrollbar-thumb {
+          background: rgba(139, 92, 246, 0.3);
+          border-radius: 4px;
+          transition: background 0.2s;
+        }
+        
+        .modern-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(139, 92, 246, 0.5);
+        }
+        
+        .modern-scroll::-webkit-scrollbar-corner {
+          background: transparent;
+        }
+        
+        /* Firefox scrollbar */
+        .modern-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
+        }
+      `}</style>
+
       {/* Animated Grid Background */}
       <div className="absolute inset-0 z-0">
         <div
@@ -136,7 +328,6 @@ const ChallengeDetailPage = () => {
             backgroundSize: "50px 50px",
           }}
         />
-        {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/5 via-transparent to-pink-900/5" />
       </div>
 
@@ -144,31 +335,53 @@ const ChallengeDetailPage = () => {
       <div className="relative z-10 h-screen flex flex-col">
         {/* Top Bar */}
         <div className="border-b border-neutral-800/50 bg-neutral-950/80 backdrop-blur-xl">
-          <div className="max-w-[1800px] mx-auto px-6 py-4">
+          <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <button
                 onClick={() => navigate(-1)}
                 className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors"
               >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="font-medium">Back</span>
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="font-medium text-sm sm:text-base">Back</span>
               </button>
 
-              <button
-                onClick={toggleFavorite}
-                className="p-2 rounded-xl hover:bg-neutral-800/50 transition-colors"
-                title={
-                  isFavorite ? "Remove from favorites" : "Add to favorites"
-                }
-              >
-                <Heart
-                  className={`w-6 h-6 transition-colors ${
-                    isFavorite
-                      ? "fill-pink-400 text-pink-400"
-                      : "text-neutral-400"
-                  }`}
-                />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Already Completed Badge */}
+                {alreadyCompleted && (
+                  <div className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-full">
+                    <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400" />
+                    <span className="text-xs sm:text-sm text-emerald-400 font-medium hidden sm:inline">
+                      Completed
+                    </span>
+                  </div>
+                )}
+
+                {/* Not Logged In Warning */}
+                {!isAuthenticated && (
+                  <div className="flex items-center gap-1 px-2 sm:px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full">
+                    <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium hidden md:inline">
+                      Login to submit
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  onClick={toggleFavorite}
+                  className="p-2 rounded-xl hover:bg-neutral-800/50 transition-colors"
+                  title={
+                    isFavorite ? "Remove from favorites" : "Add to favorites"
+                  }
+                >
+                  <Heart
+                    className={`w-5 h-5 sm:w-6 sm:h-6 transition-colors ${
+                      isFavorite
+                        ? "fill-pink-400 text-pink-400"
+                        : "text-neutral-400"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -177,45 +390,45 @@ const ChallengeDetailPage = () => {
         <div className="flex-1 overflow-hidden">
           <div className="h-full grid grid-cols-1 lg:grid-cols-2">
             {/* Left Panel - Problem Description */}
-            <div className="border-r border-neutral-800/50 overflow-y-auto bg-neutral-950/50 backdrop-blur-sm">
-              <div className="p-6 lg:p-8 max-w-3xl mx-auto">
+            <div className="modern-scroll border-r border-neutral-800/50 overflow-y-auto bg-neutral-950/50 backdrop-blur-sm">
+              <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
                 {/* Title and Meta */}
-                <div className="mb-8">
-                  <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
+                <div className="mb-6 sm:mb-8">
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
                     {challenge.title}
                   </h1>
 
-                  <div className="flex items-center gap-3 mb-4">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4">
                     <span
-                      className={`px-4 py-2 text-sm font-medium rounded-xl border ${getDifficultyColor(
+                      className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-xl border ${getDifficultyColor(
                         challenge.difficulty
                       )}`}
                     >
                       {challenge.difficulty}
                     </span>
-                    <div className="flex items-center gap-2 text-neutral-400">
-                      <Trophy className="w-5 h-5 text-purple-400" />
+                    <div className="flex items-center gap-2 text-neutral-400 text-sm">
+                      <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
                       <span className="font-bold text-purple-400">
                         {challenge.points}
                       </span>
-                      <span>points</span>
+                      <span className="hidden sm:inline">points</span>
                     </div>
-                    <span className="px-3 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-sm text-neutral-400">
+                    <span className="px-2 sm:px-3 py-1 bg-neutral-800/50 border border-neutral-700/50 rounded-lg text-xs sm:text-sm text-neutral-400">
                       {challenge.category}
                     </span>
                   </div>
                 </div>
 
                 {/* Description */}
-                <div className="mb-8">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Code2 className="w-5 h-5 text-purple-400" />
-                    <h2 className="text-xl font-semibold text-white">
+                <div className="mb-6 sm:mb-8">
+                  <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                    <Code2 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
+                    <h2 className="text-lg sm:text-xl font-semibold text-white">
                       Description
                     </h2>
                   </div>
-                  <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-2xl p-6">
-                    <p className="text-neutral-300 leading-relaxed whitespace-pre-line">
+                  <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl sm:rounded-2xl p-4 sm:p-6">
+                    <p className="text-sm sm:text-base text-neutral-300 leading-relaxed whitespace-pre-line">
                       {challenge.description}
                     </p>
                   </div>
@@ -223,22 +436,22 @@ const ChallengeDetailPage = () => {
 
                 {/* Examples */}
                 {challenge.examples && challenge.examples.length > 0 && (
-                  <div className="mb-8">
-                    <h2 className="text-xl font-semibold text-white mb-4">
+                  <div className="mb-6 sm:mb-8">
+                    <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4">
                       Examples
                     </h2>
-                    <div className="space-y-4">
+                    <div className="space-y-3 sm:space-y-4">
                       {challenge.examples.map((example, index) => (
                         <div
                           key={index}
-                          className="bg-neutral-900/50 border border-neutral-800/50 rounded-2xl p-6"
+                          className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl sm:rounded-2xl p-4 sm:p-6"
                         >
                           <div className="mb-2">
-                            <span className="text-sm font-medium text-purple-400">
+                            <span className="text-xs sm:text-sm font-medium text-purple-400">
                               Example {index + 1}:
                             </span>
                           </div>
-                          <div className="space-y-2 font-mono text-sm">
+                          <div className="space-y-2 font-mono text-xs sm:text-sm">
                             <div>
                               <span className="text-neutral-500">Input: </span>
                               <span className="text-emerald-400">
@@ -270,16 +483,16 @@ const ChallengeDetailPage = () => {
 
                 {/* Constraints */}
                 {challenge.constraints && challenge.constraints.length > 0 && (
-                  <div className="mb-8">
-                    <h2 className="text-xl font-semibold text-white mb-4">
+                  <div className="mb-6 sm:mb-8">
+                    <h2 className="text-lg sm:text-xl font-semibold text-white mb-3 sm:mb-4">
                       Constraints
                     </h2>
-                    <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-2xl p-6">
+                    <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl sm:rounded-2xl p-4 sm:p-6">
                       <ul className="space-y-2">
                         {challenge.constraints.map((constraint, index) => (
                           <li
                             key={index}
-                            className="text-neutral-400 text-sm flex items-start gap-2"
+                            className="text-neutral-400 text-xs sm:text-sm flex items-start gap-2"
                           >
                             <span className="text-purple-400 mt-1">•</span>
                             <span>{constraint}</span>
@@ -293,76 +506,71 @@ const ChallengeDetailPage = () => {
             </div>
 
             {/* Right Panel - Code Editor */}
-            <div className="overflow-y-auto bg-neutral-950/50 backdrop-blur-sm">
-              <div className="p-6 lg:p-8 h-full flex flex-col">
+            <div className="modern-scroll overflow-y-auto bg-neutral-950/50 backdrop-blur-sm">
+              <div className="p-4 sm:p-6 lg:p-8 h-full flex flex-col">
                 {/* Editor Header */}
-                <div className="mb-4">
+                <div className="mb-3 sm:mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-xl font-semibold text-white">
+                    <h2 className="text-lg sm:text-xl font-semibold text-white">
                       Your Solution
                     </h2>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-neutral-500">
+                      <span className="text-xs sm:text-sm text-neutral-500">
                         JavaScript
                       </span>
                     </div>
                   </div>
-                  <p className="text-sm text-neutral-400">
+                  <p className="text-xs sm:text-sm text-neutral-400">
                     Write your solution below:
                   </p>
                 </div>
 
                 {/* Code Editor */}
-                <div className="flex-1 mb-6">
-                  <textarea
+                <div className="flex-1 mb-4 sm:mb-6 min-h-[300px] sm:min-h-[400px]">
+                  <CodeEditor
                     value={solution}
                     onChange={(e) => setSolution(e.target.value)}
-                    placeholder="// Write your solution here...
-function solution() {
-  // Your code here
-}"
-                    className="w-full h-full p-6 bg-neutral-900/80 border border-neutral-800/50 rounded-2xl text-white font-mono text-sm resize-none focus:outline-none focus:border-purple-500/50 transition-colors placeholder-neutral-600"
-                    style={{
-                      minHeight: "400px",
-                    }}
+                    placeholder="// Write your solution here..."
+                    disabled={submitting || submitted}
                   />
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <button
                     onClick={handleSubmit}
                     disabled={submitting || submitted || !solution.trim()}
-                    className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 
-  rounded-xl text-white font-semibold transition-all 
-  ${
-    submitting || submitted || !solution.trim()
-      ? "border border-neutral-700 text-neutral-500 cursor-not-allowed"
-      : "border border-purple-500/50 hover:border-purple-400 hover:shadow-[0_0_15px_rgba(168,85,247,0.5)]"
-  }
-`}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-4 
+                      rounded-xl text-sm sm:text-base text-white font-semibold transition-all 
+                      ${
+                        submitting || submitted || !solution.trim()
+                          ? "border border-neutral-700 text-neutral-500 cursor-not-allowed"
+                          : "border border-purple-500/50 hover:border-purple-400 hover:shadow-[0_0_15px_rgba(168,85,247,0.5)]"
+                      }
+                    `}
                   >
                     {submitting ? (
                       <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Submitting...
+                        <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                        <span className="hidden sm:inline">Submitting...</span>
+                        <span className="sm:hidden">Submit...</span>
                       </>
                     ) : submitted ? (
                       <>
-                        <CheckCircle2 className="w-5 h-5" />
+                        <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         Submitted!
                       </>
                     ) : (
                       <>
-                        <Play className="w-5 h-5" />
-                        Submit Solution
+                        <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+                        {alreadyCompleted ? "Submit Again" : "Submit Solution"}
                       </>
                     )}
                   </button>
 
                   <button
                     onClick={() => setSolution(challenge.starter_code || "")}
-                    className="px-6 py-4 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 rounded-xl text-white font-medium transition-colors"
+                    className="px-4 sm:px-6 py-3 sm:py-4 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 rounded-xl text-white text-sm sm:text-base font-medium transition-colors"
                   >
                     Reset Code
                   </button>
@@ -370,10 +578,10 @@ function solution() {
 
                 {/* Success Message */}
                 {submitted && (
-                  <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
-                    <p className="text-emerald-400 text-sm text-center">
+                  <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                    <p className="text-emerald-400 text-xs sm:text-sm text-center">
                       🎉 Solution submitted successfully! You earned{" "}
-                      {challenge.points} points!
+                      {alreadyCompleted ? 0 : challenge.points} points!
                     </p>
                   </div>
                 )}

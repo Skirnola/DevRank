@@ -116,13 +116,13 @@ const ChallengesPage = () => {
             />
           </div>
 
-          {/* Filter Toggle Button (Mobile) */}
+          {/* Filter Toggle Button (Mobile & Desktop) */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="md:hidden flex items-center gap-2 px-4 py-2 bg-neutral-900/50 border border-neutral-800/50 rounded-xl text-neutral-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-neutral-900/50 border border-neutral-800/50 rounded-xl text-neutral-400 hover:text-white transition-colors"
           >
             <Filter className="h-5 w-5" />
-            Filters
+            <span>Filters</span>
             {(selectedDifficulty !== 'All' || selectedCategory !== 'All') && (
               <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full">
                 Active
@@ -131,44 +131,49 @@ const ChallengesPage = () => {
           </button>
 
           {/* Filters */}
-          <div className={`space-y-4 ${showFilters ? 'block' : 'hidden md:block'}`}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Difficulty Filter */}
-              <div>
-                <label className="block text-sm text-neutral-400 mb-2">Difficulty</label>
-                <div className="flex flex-wrap gap-2">
-                  {difficulties.map((difficulty) => (
-                    <button
-                      key={difficulty}
-                      onClick={() => setSelectedDifficulty(difficulty)}
-                      className={`px-4 py-2 rounded-xl border transition-all ${
-                        selectedDifficulty === difficulty
-                          ? 'bg-purple-500/20 border-purple-500/50 text-purple-400'
-                          : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:text-white'
-                      }`}
-                    >
-                      {difficulty}
-                    </button>
-                  ))}
+          {showFilters && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Difficulty Filter */}
+                <div>
+                  <label className="block text-sm text-neutral-400 mb-2">Difficulty</label>
+                  <div className="flex flex-wrap gap-2">
+                    {difficulties.map((difficulty) => (
+                      <button
+                        key={difficulty}
+                        onClick={() => setSelectedDifficulty(difficulty)}
+                        className={`px-4 py-2 rounded-xl border transition-all ${
+                          selectedDifficulty === difficulty
+                            ? 'bg-purple-500/20 border-purple-500/50 text-purple-400'
+                            : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {difficulty}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Category Filter */}
+                <div>
+                  <label className="block text-sm text-neutral-400 mb-2">Category</label>
+                  <div className="flex flex-wrap gap-2">
+                    {categories.map((category) => (
+                      <button
+                        key={category}
+                        onClick={() => setSelectedCategory(category)}
+                        className={`px-4 py-2 rounded-xl border transition-all ${
+                          selectedCategory === category
+                            ? 'bg-pink-500/20 border-pink-500/50 text-pink-400'
+                            : 'bg-neutral-900/50 border-neutral-800/50 text-neutral-400 hover:text-white hover:border-neutral-700/50'
+                        }`}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              {/* Category Filter */}
-              <div>
-                <label className="block text-sm text-neutral-400 mb-2">Category</label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-4 py-2 bg-neutral-900/50 border border-neutral-800/50 rounded-xl text-white focus:outline-none focus:border-purple-500/50 transition-colors"
-                >
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
             {/* Clear Filters */}
             {(searchQuery || selectedDifficulty !== 'All' || selectedCategory !== 'All') && (
@@ -181,6 +186,7 @@ const ChallengesPage = () => {
               </button>
             )}
           </div>
+          )}
         </div>
 
         {/* Error Message */}

@@ -11,17 +11,32 @@ import {
   LogOut,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 const ProfilePage = () => {
-  // Mock user data - will be replaced with API calls
+  const { user: authUser, profile } = useAuth();
+
+  // Get user data from Supabase or use defaults
   const user = {
-    name: "Iqbal Ghifari",
-    email: "iqbalghifari@gmail.com",
-    joinDate: "November 2025",
-    totalPoints: 40,
-    completedChallenges: 3,
-    badge: "Beginner",
-    avatar: "IG",
+    name: profile?.name || "User",
+    email: authUser?.email || "Not logged in",
+    joinDate: profile?.created_at
+      ? new Date(profile.created_at).toLocaleDateString("en-US", {
+          month: "long",
+          year: "numeric",
+        })
+      : "Recently",
+    totalPoints: profile?.points || 0,
+    completedChallenges: profile?.completed_challenges || 0,
+    badge: profile?.badge || "Beginner",
+    avatar: profile?.name
+      ? profile.name
+          .split(" ")
+          .map((n) => n[0])
+          .join("")
+          .toUpperCase()
+          .slice(0, 2)
+      : "U",
   };
 
   const stats = [

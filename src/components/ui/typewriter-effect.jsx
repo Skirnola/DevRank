@@ -26,7 +26,7 @@ export const TypewriterEffect = ({ words, className, cursorClassName }) => {
         },
         {
           duration: 0.3,
-          delay: stagger(0.03),
+          delay: stagger(0.04),
           ease: "easeInOut",
         }
       );

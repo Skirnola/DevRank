@@ -1,38 +1,54 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link, useLocation } from "react-router-dom";
-import {
-  Home,
-  Code2,
-  Heart,
-  History,
-  User,
-  Menu,
-  X,
-  Sparkles,
-} from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Home, Code2, Heart, History, User, Menu, X, Sparkles, LogIn, LogOut } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { useAuth } from "../../contexts/AuthContext";
+import LogoutModal from "../LogoutModal";
 
 export const ResizableNavbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isAuthenticated, logout, isGuest } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 50);
     };
 
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navItems = [
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true);
+    setIsOpen(false); // Close mobile menu
+  };
+
+  const handleLogoutConfirm = () => {
+    logout();
+    setShowLogoutModal(false);
+    navigate('/');
+  };
+
+  const handleLogoutCancel = () => {
+    setShowLogoutModal(false);
+  };
+
+  // Navigation items - filtered based on authentication
+  const navItems = isAuthenticated ? [
     { path: "/", icon: Home, label: "Home" },
     { path: "/challenges", icon: Code2, label: "Challenges" },
     { path: "/favorites", icon: Heart, label: "Favorites" },
     { path: "/history", icon: History, label: "History" },
     { path: "/profile", icon: User, label: "Profile" },
+  ] : [
+    { path: "/", icon: Home, label: "Home" },
+    { path: "/challenges", icon: Code2, label: "Challenges" },
+    { path: "/login", icon: LogIn, label: "Login" },
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -40,9 +56,9 @@ export const ResizableNavbar = () => {
   return (
     <>
       {/* Desktop Navbar */}
-      <nav className="hidden md:block fixed top-0 left-0 right-0 z-50">
+      <nav className="hidden md:block">
         <div className="bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-800/50">
-          <div
+          <div 
             className={cn(
               "mx-auto px-6 transition-all duration-500 ease-out",
               scrolled ? "max-w-7xl" : "max-w-full"
@@ -80,20 +96,25 @@ export const ResizableNavbar = () => {
                         <motion.div
                           layoutId="navbar-indicator"
                           className="absolute inset-0 bg-purple-500/10 border border-purple-500/30 rounded-xl"
-                          transition={{
-                            type: "spring",
-                            bounce: 0.2,
-                            duration: 0.6,
-                          }}
+                          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                         />
                       )}
                       <Icon className="h-5 w-5 relative z-10" />
-                      <span className="font-medium relative z-10">
-                        {item.label}
-                      </span>
+                      <span className="font-medium relative z-10">{item.label}</span>
                     </Link>
                   );
                 })}
+
+                {/* Logout Button (when authenticated) */}
+                {isAuthenticated && (
+                  <button
+                    onClick={handleLogoutClick}
+                    className="flex items-center gap-2 px-4 py-2 text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-all"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span className="font-medium">Logout</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -101,7 +122,7 @@ export const ResizableNavbar = () => {
       </nav>
 
       {/* Mobile Navbar */}
-      <nav className="md:hidden fixed top-0 left-0 right-0 z-50 bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-800/50">
+      <nav className="md:hidden bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-800/50">
         <div className="flex items-center justify-between h-16 px-6">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
@@ -154,14 +175,30 @@ export const ResizableNavbar = () => {
                     </Link>
                   );
                 })}
+
+                {/* Logout Button (Mobile) */}
+                {isAuthenticated && (
+                  <button
+                    onClick={handleLogoutClick}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 rounded-xl transition-all"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span className="font-medium">Logout</span>
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </nav>
 
-      {/* Spacer for fixed navbar */}
-      <div className="h-16" />
+      {/* Logout Confirmation Modal */}
+      <LogoutModal
+        isOpen={showLogoutModal}
+        onClose={handleLogoutCancel}
+        onConfirm={handleLogoutConfirm}
+        isGuest={isGuest}
+      />
     </>
   );
 };
