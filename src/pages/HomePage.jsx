@@ -102,19 +102,27 @@ const HomePage = () => {
               DevRank
             </h1>
 
-            <TypewriterEffect
-              words={[
-                { text: "Solve\u00A0", className: "text-white" },
-                { text: "challenges,\u00A0", className: "text-purple-300" },
-                { text: "earn\u00A0", className: "text-white" },
-                { text: "points,\u00A0", className: "text-purple-300" },
-                { text: "and\u00A0", className: "text-white" },
-                { text: "climb\u00A0", className: "text-purple-300" },
-                { text: "the\u00A0", className: "text-white" },
-                { text: "ranks.", className: "text-purple-300" },
-              ]}
-              className="text-center md:text-left text-lg sm:text-xl md:text-3xl lg:text-4xl font-light mb-8 md:mb-12 whitespace-nowrap"
-            />
+            {/* MOBILE — simple sentence */}
+            <p className="text-center text-base text-neutral-200 font-light mb-8 md:hidden px-2">
+              Solve challenges, earn points, and climb the ranks.
+            </p>
+
+            {/* DESKTOP — Typewriter effect */}
+            <div className="hidden md:block">
+              <TypewriterEffect
+                words={[
+                  { text: "Solve\u00A0", className: "text-white" },
+                  { text: "challenges,\u00A0", className: "text-purple-300" },
+                  { text: "earn\u00A0", className: "text-white" },
+                  { text: "points,\u00A0", className: "text-purple-300" },
+                  { text: "and\u00A0", className: "text-white" },
+                  { text: "climb\u00A0", className: "text-purple-300" },
+                  { text: "the\u00A0", className: "text-white" },
+                  { text: "ranks.", className: "text-purple-300" },
+                ]}
+                className="text-center md:text-left text-xl md:text-3xl lg:text-4xl font-light mb-12 whitespace-nowrap"
+              />
+            </div>
 
             {/* STATS – Mobile Scaled Down */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4 mb-6 md:mb-12">
