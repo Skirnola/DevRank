@@ -37,12 +37,6 @@ const HomePage = () => {
       const data = await challengeService.getAllChallenges();
       setChallenges(data || []);
 
-      const completed = data?.filter((c) => c.id === 1 || c.id === 3) || [];
-      setUserStats({
-        totalPoints: completed.length * 20,
-        completedChallenges: completed.length,
-        badge: completed.length >= 2 ? "Intermediate" : "Beginner",
-      });
     } catch (error) {
       console.error("Error fetching challenges:", error);
       setError("Failed to load challenges. Please try again.");
@@ -64,9 +58,7 @@ const HomePage = () => {
     }
   };
 
-  const isCompleted = (challengeId) => {
-    return challengeId === 1 || challengeId === 3;
-  };
+const isCompleted = () => false;
 
   const scrollToChallenges = () => {
     document.getElementById("challenges-section")?.scrollIntoView({
@@ -161,7 +153,7 @@ const HomePage = () => {
               <div className="bg-purple-500/10 backdrop-blur-xl border border-purple-500/30 rounded-xl md:rounded-2xl p-4 md:p-6 hover:border-purple-400/50 transition-all">
                 <div className="flex flex-col items-center">
                   <Zap className="w-8 h-8 md:w-10 md:h-10 text-purple-400 mb-2 md:mb-3" />
-                  <div className="text-3xl md:text-4xl font-bold text-white">
+                  <div className="text-3xl md:text-3xl font-bold text-white mt-1">
                     {userStats.badge}
                   </div>
                   <div className="text-xs md:text-sm text-neutral-300 mt-1">
