@@ -283,7 +283,7 @@ const ChallengeDetailPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 relative overflow-hidden">
+    <div className="min-h-screen bg-neutral-950 relative overflow-hidden pb-36 sm:pb-0">
       <style>{`
         /* Modern scrollbar styling for challenge panels */
         .modern-scroll::-webkit-scrollbar {
