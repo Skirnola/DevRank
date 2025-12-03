@@ -8,6 +8,7 @@ import {
   Code2,
   Clock,
   Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
@@ -42,6 +43,7 @@ const TaskHistoryPage = () => {
           .from('submissions')
           .select('*')
           .eq('user_id', user.id)
+          .in('status', ['completed', 'accepted']) // Check both statuses
           .order('created_at', { ascending: false });
 
         if (submissionsError) throw submissionsError;
@@ -189,7 +191,8 @@ const TaskHistoryPage = () => {
     );
   }
 
-  if (!isAuthenticated) {
+  // Block both non-authenticated users AND guests from viewing history
+  if (!isAuthenticated || isGuest) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-6">
         <div className="text-center max-w-md">
@@ -205,6 +208,29 @@ const TaskHistoryPage = () => {
             className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-xl text-white font-semibold transition-all hover:scale-105"
           >
             Login to Continue
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Guest users also need to login to view history
+  if (isGuest) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+            <AlertCircle className="w-10 h-10 text-amber-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Login to View History</h2>
+          <p className="text-neutral-400 mb-6">
+            You're currently in guest mode. Create an account to view your submission history and track your progress over time.
+          </p>
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-xl text-white font-semibold transition-all hover:scale-105"
+          >
+            Create Account
           </Link>
         </div>
       </div>
