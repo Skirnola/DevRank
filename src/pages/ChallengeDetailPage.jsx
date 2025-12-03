@@ -10,6 +10,7 @@ import {
   Heart,
   AlertCircle,
   Eye,
+  RotateCcw,
 } from "lucide-react";
 import challengeService from "../services/challengeService";
 import CodeEditor from "../components/CodeEditor";
@@ -20,7 +21,7 @@ import Modal from "../components/Modal";
 const ChallengeDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, profile, isAuthenticated, isGuest, updateGuestProfile } =
+  const { user, profile, isAuthenticated, isGuest, updateGuestProfile, initializeGuestProfile, refreshProfile } =
     useAuth();
 
   const [challenge, setChallenge] = useState(null);
@@ -186,6 +187,91 @@ const ChallengeDetailPage = () => {
     }
   };
 
+  const handleUndoSubmission = async () => {
+    showModal({
+      type: "confirm",
+      title: "Undo Submission",
+      message: "Are you sure you want to undo this submission? Your points will be deducted and you can submit again.",
+      confirmText: "Yes, Undo",
+      cancelText: "Cancel",
+      showCancel: true,
+      onConfirm: () => undoSubmission(),
+    });
+  };
+
+  const undoSubmission = async () => {
+    try {
+      if (isGuest) {
+        // Guest mode - remove from localStorage
+        const guestSubmissions = JSON.parse(
+          localStorage.getItem("devrank_guest_submissions") || "[]"
+        );
+        
+        // Find and remove the submission
+        const filteredSubmissions = guestSubmissions.filter(
+          (sub) => sub.challenge_id !== parseInt(id)
+        );
+        localStorage.setItem(
+          "devrank_guest_submissions",
+          JSON.stringify(filteredSubmissions)
+        );
+
+        // Update guest profile
+        const currentProfile = JSON.parse(
+          localStorage.getItem("devrank_guest")
+        ).profile;
+        
+        const newPoints = Math.max(0, currentProfile.points - challenge.points);
+        const newCompletedCount = Math.max(0, currentProfile.completed_challenges - 1);
+
+        // Recalculate badge
+        let newBadge = "Beginner";
+        if (newPoints >= 200) newBadge = "Expert";
+        else if (newPoints >= 100) newBadge = "Advanced";
+        else if (newPoints >= 50) newBadge = "Intermediate";
+
+        updateGuestProfile({
+          points: newPoints,
+          completed_challenges: newCompletedCount,
+          badge: newBadge,
+        });
+      } else {
+        // Real user - delete from Supabase
+        const { error: deleteError } = await supabase
+          .from("submissions")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("challenge_id", id);
+
+        if (deleteError) throw deleteError;
+
+        // Refresh profile - it will recalculate everything from remaining submissions
+        if (refreshProfile) {
+          await refreshProfile();
+        }
+      }
+
+      // Reset state
+      setAlreadyCompleted(false);
+      setPreviousSubmission(null);
+      setViewingPrevious(false);
+      setSolution(challenge.starter_code || "");
+
+      showModal({
+        type: "success",
+        title: "Submission Undone",
+        message: "Your submission has been removed. You can now submit again!",
+      });
+    } catch (error) {
+      console.error("Error undoing submission:", error);
+      showModal({
+        type: "error",
+        title: "Error",
+        message: "Failed to undo submission. Please try again.",
+      });
+    }
+  };
+
   const handleSubmit = async () => {
     // Check if logged in
     if (!isAuthenticated) {
@@ -265,7 +351,18 @@ const ChallengeDetailPage = () => {
   };
 
   const handleGuestSubmission = async () => {
-    // Save to localStorage
+    // Initialize guest profile if it doesn't exist
+    let currentProfile;
+    const guestData = localStorage.getItem('devrank_guest');
+    
+    if (!guestData) {
+      // First time guest is submitting - create profile
+      currentProfile = initializeGuestProfile();
+    } else {
+      currentProfile = JSON.parse(guestData).profile;
+    }
+
+    // Save submission to localStorage
     const guestSubmissions = JSON.parse(
       localStorage.getItem("devrank_guest_submissions") || "[]"
     );
@@ -289,9 +386,6 @@ const ChallengeDetailPage = () => {
 
     // Update guest profile if first completion
     if (!alreadyCompleted) {
-      const currentProfile = JSON.parse(
-        localStorage.getItem("devrank_guest")
-      ).profile;
       const newPoints = currentProfile.points + challenge.points;
       const newCompletedCount = currentProfile.completed_challenges + 1;
 
@@ -316,14 +410,14 @@ const ChallengeDetailPage = () => {
       console.log("Challenge ID:", id);
       console.log("Solution:", solution);
 
-      // Submit to Supabase with CORRECT column names
+      // Submit to Supabase with 'accepted' status
       const { data, error: submitError } = await supabase
         .from("submissions")
         .insert({
           user_id: user.id,
           challenge_id: id,
           solution: solution,
-          status: "completed",
+          status: "accepted", // Use 'accepted' to trigger points update
           language: "javascript",
         })
         .select();
@@ -334,6 +428,11 @@ const ChallengeDetailPage = () => {
       }
 
       console.log("✅ Submission successful:", data);
+
+      // Refresh profile to get updated stats from database
+      if (refreshProfile) {
+        await refreshProfile();
+      }
     } catch (error) {
       console.error("💥 Error in handleRealSubmission:", error);
       throw error;
@@ -638,18 +737,31 @@ const ChallengeDetailPage = () => {
                       View Your Submission
                     </button>
                   ) : viewingPrevious ? (
-                    // Back to Challenge button when viewing previous
-                    <button
-                      onClick={() => {
-                        setViewingPrevious(false);
-                        setSolution(challenge.starter_code || "");
-                      }}
-                      className="flex-1 px-4 sm:px-6 py-3 sm:py-4 
-                        bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 
-                        rounded-xl text-white text-sm sm:text-base font-medium transition-colors"
-                    >
-                      Back to Challenge
-                    </button>
+                    // Back to Challenge and Undo buttons when viewing previous
+                    <>
+                      <button
+                        onClick={() => {
+                          setViewingPrevious(false);
+                          setSolution(challenge.starter_code || "");
+                        }}
+                        className="flex-1 px-4 sm:px-6 py-3 sm:py-4 
+                          bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 
+                          rounded-xl text-white text-sm sm:text-base font-medium transition-colors"
+                      >
+                        Back to Challenge
+                      </button>
+                      
+                      <button
+                        onClick={handleUndoSubmission}
+                        className="flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-4 
+                          bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 
+                          rounded-xl text-rose-400 text-sm sm:text-base font-medium transition-colors"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        <span className="hidden sm:inline">Undo Submission</span>
+                        <span className="sm:hidden">Undo</span>
+                      </button>
+                    </>
                   ) : (
                     // Normal Submit and Reset buttons
                     <>
