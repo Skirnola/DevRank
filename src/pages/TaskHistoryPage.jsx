@@ -31,58 +31,73 @@ const TaskHistoryPage = () => {
       setLoading(true);
 
       if (isGuest) {
+        // Get submissions from localStorage for guest
         const guestSubmissions = JSON.parse(
-          localStorage.getItem("devrank_guest_submissions") || "[]"
+          localStorage.getItem('devrank_guest_submissions') || '[]'
         );
         setSubmissions(guestSubmissions);
       } else {
-        const { data: submissionsData } = await supabase
-          .from("submissions")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
+        // Get submissions from Supabase for real users
+        const { data: submissionsData, error: submissionsError } = await supabase
+          .from('submissions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
 
-        const challengeIds = [
-          ...new Set(submissionsData.map((sub) => sub.challenge_id)),
-        ];
+        if (submissionsError) throw submissionsError;
 
-        const { data: challengesData } = await supabase
-          .from("challenges")
-          .select("*")
-          .in("id", challengeIds);
+        // Get all unique challenge IDs
+        const challengeIds = [...new Set(submissionsData.map(sub => sub.challenge_id))];
+        
+        // Fetch challenge details separately
+        const { data: challengesData, error: challengesError } = await supabase
+          .from('challenges')
+          .select('*')
+          .in('id', challengeIds);
 
+        if (challengesError) {
+          console.error('Error fetching challenges:', challengesError);
+        }
+
+        // Create a map of challenges by ID
         const challengesMap = {};
-        (challengesData || []).forEach((challenge) => {
+        (challengesData || []).forEach(challenge => {
           challengesMap[challenge.id] = challenge;
         });
 
-        const formatted = submissionsData.map((sub) => {
-          const c = challengesMap[sub.challenge_id];
+        // Transform data to match our format
+        const formattedSubmissions = submissionsData.map(sub => {
+          const challenge = challengesMap[sub.challenge_id];
           return {
             id: sub.id,
             challenge_id: sub.challenge_id,
-            title: c?.title || `Challenge #${sub.challenge_id}`,
-            difficulty: c?.difficulty || "Easy",
-            points: sub.points_earned || c?.points || 0,
-            date: sub.submitted_at || sub.created_at,
-            category: c?.category || "General",
-            status: sub.status || "completed",
+            title: challenge?.title || `Challenge #${sub.challenge_id}`,
+            difficulty: challenge?.difficulty || 'Easy',
+            points: sub.points_earned || challenge?.points || 0, // Use points_earned or fallback to challenge points
+            date: sub.submitted_at || sub.created_at, // Use submitted_at if available
+            category: challenge?.category || 'General',
+            status: sub.status || 'completed',
           };
         });
 
-        setSubmissions(formatted);
+        setSubmissions(formattedSubmissions);
       }
     } catch (error) {
-      console.error("Error fetching submissions:", error);
+      console.error('Error fetching submissions:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  // Get user stats from Supabase profile
   const totalPoints = profile?.points || 0;
-  const completedCount = submissions.filter((s) => s.status === "completed")
-    .length;
+  const completedChallenges = profile?.completed_challenges || 0;
 
+  // Count ongoing vs completed
+  const ongoingCount = submissions.filter(s => s.status === 'ongoing').length;
+  const completedCount = submissions.filter(s => s.status === 'completed').length;
+
+  // Badge calculation based on points
   const getBadge = (points) => {
     if (points >= 200)
       return {
@@ -119,8 +134,8 @@ const TaskHistoryPage = () => {
 
   const badge = getBadge(totalPoints);
 
-  const getDifficultyColor = (d) => {
-    switch (d) {
+  const getDifficultyColor = (difficulty) => {
+    switch (difficulty) {
       case "Easy":
         return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
       case "Medium":
@@ -133,106 +148,110 @@ const TaskHistoryPage = () => {
   };
 
   const getStatusBadge = (status) => {
-    if (status === "completed") {
+    if (status === 'completed') {
       return (
-        <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-full">
+        <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-0.5 sm:py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-full">
           <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400" />
-          <span className="text-[10px] sm:text-xs text-emerald-400">
+          <span className="text-[10px] sm:text-xs text-emerald-400 font-medium">
             Completed
           </span>
         </div>
       );
+    } else {
+      return (
+        <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-0.5 sm:py-1 bg-amber-500/20 border border-amber-500/30 rounded-full">
+          <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-amber-400" />
+          <span className="text-[10px] sm:text-xs text-amber-400 font-medium">
+            Ongoing
+          </span>
+        </div>
+      );
     }
-    return (
-      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full">
-        <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-amber-400" />
-        <span className="text-[10px] sm:text-xs text-amber-400">Ongoing</span>
-      </div>
-    );
   };
 
-  const formatDate = (d) =>
-    new Date(d).toLocaleDateString("en-US", {
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
     });
+  };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 text-purple-400 animate-spin" />
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-purple-400 animate-spin" />
+          <p className="text-neutral-400">Loading history...</p>
+        </div>
       </div>
     );
+  }
 
-  if (!isAuthenticated)
+  if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4 sm:p-6">
-        <div className="text-center max-w-sm">
-          <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-full w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 flex items-center justify-center">
-            <Trophy className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400" />
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-6">
+        <div className="text-center max-w-md">
+          <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+            <Trophy className="w-10 h-10 text-purple-400" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold mb-2">Login Required</h2>
-          <p className="text-neutral-400 text-sm sm:text-base mb-6">
-            Please login to view your history.
+          <h2 className="text-2xl font-bold text-white mb-2">Login Required</h2>
+          <p className="text-neutral-400 mb-6">
+            Please login to view your task history and track your progress.
           </p>
           <Link
             to="/login"
-            className="px-5 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl text-white font-semibold text-sm sm:text-base"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-xl text-white font-semibold transition-all hover:scale-105"
           >
             Login to Continue
           </Link>
         </div>
       </div>
     );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white pb-32">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        
         {/* Header */}
         <div className="mb-6 sm:mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-1 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+          <h1 className="text-2xl sm:text-4xl font-bold mb-1 sm:mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
             Task History
           </h1>
           <p className="text-neutral-400 text-sm sm:text-lg">
-            Track your progress & achievements
+            Track your progress and achievements
           </p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6 mb-8">
-          
-          {/* Badge */}
-          <div className="bg-neutral-900/60 border border-purple-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-6">
-            <div className="text-center flex flex-col items-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6 mb-6 sm:mb-8">
+          {/* Badge Display */}
+          <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-sm border border-purple-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 hover:border-purple-400/50 transition-all">
+            <div className="flex flex-col items-center text-center">
               <div className="p-2 sm:p-3 bg-purple-500/20 rounded-xl mb-2 sm:mb-3">
                 <Award className="w-5 h-5 sm:w-6 sm:h-6 text-purple-400" />
               </div>
-              <p className="text-xs sm:text-sm text-neutral-400 mb-1 sm:mb-2">
-                Your Badge
-              </p>
-
+              <p className="text-xs sm:text-sm text-neutral-400 mb-1 sm:mb-2">Your Badge</p>
               <div
-                className={`px-3 py-1 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-base font-bold bg-gradient-to-r ${badge.color}`}
+                className={`inline-flex items-center gap-1 sm:gap-2 px-3 py-1 sm:px-4 sm:py-2 rounded-xl text-sm sm:text-base font-bold text-white bg-gradient-to-r ${badge.color}`}
               >
-                {badge.icon} {badge.name}
+                <span>{badge.icon}</span>
+                <span>{badge.name}</span>
               </div>
 
+              {/* Progress to Next Badge */}
               {badge.nextLevel && (
-                <div className="mt-3 w-full">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] sm:text-xs text-neutral-500">
-                      Next Badge
-                    </span>
+                <div className="mt-3 sm:mt-4 w-full">
+                  <div className="flex items-center justify-between mb-1 sm:mb-2">
+                    <span className="text-[10px] sm:text-xs text-neutral-500">Next Badge</span>
                     <span className="text-[10px] sm:text-xs text-purple-400 font-semibold">
-                      {totalPoints}/{badge.nextLevel}
+                      {totalPoints} / {badge.nextLevel} pts
                     </span>
                   </div>
-
                   <div className="bg-neutral-800/50 rounded-full h-2 overflow-hidden">
                     <div
-                      className={`h-full bg-gradient-to-r ${badge.color}`}
+                      className={`h-full bg-gradient-to-r ${badge.color} transition-all duration-500`}
                       style={{ width: `${badge.progress}%` }}
                     />
                   </div>
@@ -242,28 +261,26 @@ const TaskHistoryPage = () => {
           </div>
 
           {/* Total Points */}
-          <div className="bg-neutral-900/60 border border-pink-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-6">
-            <div className="text-center flex flex-col items-center">
+          <div className="bg-gradient-to-br from-pink-500/10 to-purple-500/10 backdrop-blur-sm border border-pink-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 hover:border-pink-400/50 transition-all">
+            <div className="flex flex-col items-center text-center">
               <div className="p-2 sm:p-3 bg-pink-500/20 rounded-xl mb-2 sm:mb-3">
                 <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-pink-400" />
               </div>
-              <p className="text-xs sm:text-sm text-neutral-400 mb-1">
-                Total Points
-              </p>
-              <p className="text-2xl sm:text-4xl font-bold">{totalPoints}</p>
+              <p className="text-xs sm:text-sm text-neutral-400 mb-1 sm:mb-2">Total Points</p>
+              <p className="text-2xl sm:text-4xl font-bold text-white">{totalPoints}</p>
             </div>
           </div>
 
-          {/* Completed */}
-          <div className="bg-neutral-900/60 border border-emerald-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-6">
-            <div className="text-center flex flex-col items-center">
+          {/* Completed Challenges */}
+          <div className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 backdrop-blur-sm border border-emerald-500/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 hover:border-emerald-400/50 transition-all">
+            <div className="flex flex-col items-center text-center">
               <div className="p-2 sm:p-3 bg-emerald-500/20 rounded-xl mb-2 sm:mb-3">
                 <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
               </div>
-              <p className="text-xs sm:text-sm text-neutral-400 mb-1">
-                Completed
+              <p className="text-xs sm:text-sm text-neutral-400 mb-1 sm:mb-2">Completed</p>
+              <p className="text-2xl sm:text-4xl font-bold text-white">
+                {completedCount}
               </p>
-              <p className="text-2xl sm:text-4xl font-bold">{completedCount}</p>
             </div>
           </div>
         </div>
@@ -276,20 +293,21 @@ const TaskHistoryPage = () => {
           </div>
 
           {submissions.length === 0 ? (
-            <div className="bg-neutral-900/60 border border-neutral-800/50 rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center">
+            <div className="bg-neutral-900/50 border border-neutral-800/50 rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center">
               <div className="p-3 sm:p-4 bg-purple-500/10 border border-purple-500/30 rounded-full w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 sm:mb-4 flex items-center justify-center">
                 <Code2 className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400" />
               </div>
-              <p className="text-neutral-400 text-base sm:text-lg mb-1">
-                No submissions yet
+              <p className="text-neutral-400 text-base sm:text-lg mb-1 sm:mb-2">
+                No challenges attempted yet
               </p>
               <p className="text-neutral-500 text-xs sm:text-sm mb-4 sm:mb-6">
-                Solve challenges to see them here
+                Start solving challenges to track your progress!
               </p>
               <Link
                 to="/challenges"
-                className="px-5 py-3 sm:px-6 sm:py-3 text-sm sm:text-base bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl font-semibold text-white"
+                className="inline-flex items-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-xl text-white text-sm sm:text-base font-semibold transition-all hover:scale-105"
               >
+                <Code2 className="w-4 h-4 sm:w-5 sm:h-5" />
                 Browse Challenges
               </Link>
             </div>
@@ -299,40 +317,35 @@ const TaskHistoryPage = () => {
                 <Link
                   key={task.id}
                   to={`/challenge/${task.challenge_id}`}
-                  className="group bg-neutral-900/60 border border-neutral-800/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 hover:border-purple-500/50 transition-all"
+                  className="group bg-gradient-to-br from-neutral-900/80 to-neutral-900/40 backdrop-blur-sm border border-neutral-800/50 hover:border-purple-500/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/20 hover:-translate-y-1"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
-                    
-                    {/* Left */}
                     <div className="flex-1">
                       <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                        <h3 className="text-base sm:text-xl font-semibold group-hover:text-purple-400">
+                        <h3 className="text-base sm:text-xl font-semibold text-white group-hover:text-purple-400 transition-colors">
                           {task.title}
                         </h3>
                         {getStatusBadge(task.status)}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
-                        
                         <span
-                          className={`px-2 py-1 sm:px-3 sm:py-1 text-[10px] sm:text-xs rounded-full border ${getDifficultyColor(
+                          className={`px-2 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-xs font-medium rounded-full border ${getDifficultyColor(
                             task.difficulty
                           )}`}
                         >
                           {task.difficulty}
                         </span>
-
                         <span className="text-neutral-500 text-[10px] sm:text-sm">
                           Category:{" "}
                           <span className="text-purple-400 font-medium">
                             {task.category}
                           </span>
                         </span>
-
-                        {task.status === "completed" && (
+                        {task.status === 'completed' && (
                           <div className="flex items-center gap-1">
                             <Trophy className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400" />
-                            <span className="text-[10px] sm:text-sm text-emerald-400 font-semibold">
+                            <span className="text-emerald-400 text-[10px] sm:text-sm font-semibold">
                               +{task.points} pts
                             </span>
                           </div>
@@ -340,12 +353,10 @@ const TaskHistoryPage = () => {
                       </div>
                     </div>
 
-                    {/* Date */}
                     <div className="flex items-center gap-1 sm:gap-2 text-neutral-400 text-[10px] sm:text-sm">
                       <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
                       <span>{formatDate(task.date)}</span>
                     </div>
-
                   </div>
                 </Link>
               ))}

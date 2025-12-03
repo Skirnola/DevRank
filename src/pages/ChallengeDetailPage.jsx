@@ -9,11 +9,13 @@ import {
   Play,
   Heart,
   AlertCircle,
+  Eye,
 } from "lucide-react";
 import challengeService from "../services/challengeService";
 import CodeEditor from "../components/CodeEditor";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
+import Modal from "../components/Modal";
 
 const ChallengeDetailPage = () => {
   const { id } = useParams();
@@ -28,6 +30,18 @@ const ChallengeDetailPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [alreadyCompleted, setAlreadyCompleted] = useState(false);
+  const [previousSubmission, setPreviousSubmission] = useState(null);
+  const [viewingPrevious, setViewingPrevious] = useState(false);
+
+  // Modal states
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: "info",
+    title: "",
+    message: "",
+    onConfirm: null,
+    showCancel: false,
+  });
 
   useEffect(() => {
     fetchChallenge();
@@ -66,8 +80,12 @@ const ChallengeDetailPage = () => {
       }
     } catch (error) {
       console.error("Error fetching challenge:", error);
-      alert("Challenge not found!");
-      navigate("/challenges");
+      showModal({
+        type: "error",
+        title: "Challenge Not Found",
+        message: "The challenge you're looking for doesn't exist.",
+        onConfirm: () => navigate("/challenges"),
+      });
     } finally {
       setLoading(false);
     }
@@ -82,11 +100,14 @@ const ChallengeDetailPage = () => {
         const guestSubmissions = JSON.parse(
           localStorage.getItem("devrank_guest_submissions") || "[]"
         );
-        const completed = guestSubmissions.some(
+        const completed = guestSubmissions.find(
           (sub) =>
             sub.challenge_id === parseInt(id) && sub.status === "completed"
         );
-        setAlreadyCompleted(completed);
+        if (completed) {
+          setAlreadyCompleted(true);
+          setPreviousSubmission(completed);
+        }
       } else {
         // Check Supabase for real users
         const { data, error } = await supabase
@@ -94,11 +115,13 @@ const ChallengeDetailPage = () => {
           .select("*")
           .eq("user_id", user.id)
           .eq("challenge_id", id)
-          .in("status", ["completed", "accepted"]) // ← Check both statuses
+          .in("status", ["completed", "accepted"])
+          .order("created_at", { ascending: false })
           .limit(1);
 
         if (!error && data && data.length > 0) {
           setAlreadyCompleted(true);
+          setPreviousSubmission(data[0]);
         }
       }
     } catch (error) {
@@ -129,6 +152,20 @@ const ChallengeDetailPage = () => {
     }
   };
 
+  const showModal = (config) => {
+    setModalConfig({
+      isOpen: true,
+      ...config,
+    });
+  };
+
+  const closeModal = () => {
+    setModalConfig({
+      ...modalConfig,
+      isOpen: false,
+    });
+  };
+
   const getDifficultyColor = (difficulty) => {
     switch (difficulty) {
       case "Easy":
@@ -142,27 +179,53 @@ const ChallengeDetailPage = () => {
     }
   };
 
+  const handleViewPreviousSubmission = () => {
+    if (previousSubmission) {
+      setViewingPrevious(true);
+      setSolution(previousSubmission.solution || previousSubmission.code || "");
+    }
+  };
+
   const handleSubmit = async () => {
     // Check if logged in
     if (!isAuthenticated) {
-      alert("Please login to submit solutions!");
-      navigate("/login", { state: { from: { pathname: `/challenge/${id}` } } });
+      showModal({
+        type: "warning",
+        title: "Login Required",
+        message: "Please login to submit solutions and track your progress!",
+        confirmText: "Go to Login",
+        onConfirm: () => navigate("/login", { state: { from: { pathname: `/challenge/${id}` } } }),
+      });
       return;
     }
 
     if (!solution.trim()) {
-      alert("Please write your solution first!");
+      showModal({
+        type: "warning",
+        title: "Empty Solution",
+        message: "Please write your solution first before submitting!",
+      });
       return;
     }
 
     // Check for duplicate submission
     if (alreadyCompleted) {
-      const confirm = window.confirm(
-        "You've already completed this challenge. Submit again? (No additional points)"
-      );
-      if (!confirm) return;
+      showModal({
+        type: "confirm",
+        title: "Already Completed",
+        message: "You've already completed this challenge. Submit again? (No additional points will be awarded)",
+        confirmText: "Submit Again",
+        cancelText: "Cancel",
+        showCancel: true,
+        onConfirm: () => submitSolution(),
+      });
+      return;
     }
 
+    submitSolution();
+  };
+
+  const submitSolution = async () => {
     setSubmitting(true);
 
     try {
@@ -176,17 +239,26 @@ const ChallengeDetailPage = () => {
 
       setSubmitted(true);
 
+      const earnedPoints = alreadyCompleted ? 0 : challenge.points;
+      
       setTimeout(() => {
-        const earnedPoints = alreadyCompleted ? 0 : challenge.points;
-        const message = alreadyCompleted
-          ? "Solution submitted! (Already completed - no additional points)"
-          : `Solution submitted successfully! You earned ${earnedPoints} points! 🎉`;
-        alert(message);
-        navigate("/history");
+        showModal({
+          type: "success",
+          title: "Success! 🎉",
+          message: alreadyCompleted
+            ? "Solution submitted! (Already completed - no additional points)"
+            : `Solution submitted successfully! You earned ${earnedPoints} points!`,
+          confirmText: "View History",
+          onConfirm: () => navigate("/history"),
+        });
       }, 500);
     } catch (error) {
       console.error("Error submitting solution:", error);
-      alert("Failed to submit solution. Please try again.");
+      showModal({
+        type: "error",
+        title: "Submission Failed",
+        message: "Failed to submit solution. Please try again.",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -203,6 +275,7 @@ const ChallengeDetailPage = () => {
       challenge_id: parseInt(id),
       challenge_title: challenge.title,
       code: solution,
+      solution: solution,
       status: "completed",
       points: alreadyCompleted ? 0 : challenge.points,
       submitted_at: new Date().toISOString(),
@@ -248,8 +321,8 @@ const ChallengeDetailPage = () => {
         .from("submissions")
         .insert({
           user_id: user.id,
-          challenge_id: id, // This is from URL params
-          solution: solution, // ← Your table uses 'solution' not 'code'
+          challenge_id: id,
+          solution: solution,
           status: "completed",
           language: "javascript",
         })
@@ -315,6 +388,19 @@ const ChallengeDetailPage = () => {
           scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
         }
       `}</style>
+
+      {/* Modal */}
+      <Modal
+        isOpen={modalConfig.isOpen}
+        onClose={closeModal}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        showCancel={modalConfig.showCancel}
+        onConfirm={modalConfig.onConfirm}
+      />
 
       {/* Animated Grid Background */}
       <div className="absolute inset-0 z-0">
@@ -512,7 +598,7 @@ const ChallengeDetailPage = () => {
                 <div className="mb-3 sm:mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <h2 className="text-lg sm:text-xl font-semibold text-white">
-                      Your Solution
+                      {viewingPrevious ? "Your Previous Submission" : "Your Solution"}
                     </h2>
                     <div className="flex items-center gap-2">
                       <span className="text-xs sm:text-sm text-neutral-500">
@@ -521,7 +607,9 @@ const ChallengeDetailPage = () => {
                     </div>
                   </div>
                   <p className="text-xs sm:text-sm text-neutral-400">
-                    Write your solution below:
+                    {viewingPrevious 
+                      ? "Viewing your previous submission for this challenge"
+                      : "Write your solution below:"}
                   </p>
                 </div>
 
@@ -531,49 +619,79 @@ const ChallengeDetailPage = () => {
                     value={solution}
                     onChange={(e) => setSolution(e.target.value)}
                     placeholder="// Write your solution here..."
-                    disabled={submitting || submitted}
+                    disabled={submitting || submitted || viewingPrevious}
                   />
                 </div>
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                  <button
-                    onClick={handleSubmit}
-                    disabled={submitting || submitted || !solution.trim()}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-4 
-                      rounded-xl text-sm sm:text-base text-white font-semibold transition-all 
-                      ${
-                        submitting || submitted || !solution.trim()
-                          ? "border border-neutral-700 text-neutral-500 cursor-not-allowed"
-                          : "border border-purple-500/50 hover:border-purple-400 hover:shadow-[0_0_15px_rgba(168,85,247,0.5)]"
-                      }
-                    `}
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
-                        <span className="hidden sm:inline">Submitting...</span>
-                        <span className="sm:hidden">Submit...</span>
-                      </>
-                    ) : submitted ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                        Submitted!
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-4 h-4 sm:w-5 sm:h-5" />
-                        {alreadyCompleted ? "Submit Again" : "Submit Solution"}
-                      </>
-                    )}
-                  </button>
+                  {/* Show different buttons based on completion status */}
+                  {alreadyCompleted && !viewingPrevious ? (
+                    // View Previous Submission button
+                    <button
+                      onClick={handleViewPreviousSubmission}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-4 
+                        bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600
+                        rounded-xl text-sm sm:text-base text-white font-semibold transition-all"
+                    >
+                      <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+                      View Your Submission
+                    </button>
+                  ) : viewingPrevious ? (
+                    // Back to Challenge button when viewing previous
+                    <button
+                      onClick={() => {
+                        setViewingPrevious(false);
+                        setSolution(challenge.starter_code || "");
+                      }}
+                      className="flex-1 px-4 sm:px-6 py-3 sm:py-4 
+                        bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 
+                        rounded-xl text-white text-sm sm:text-base font-medium transition-colors"
+                    >
+                      Back to Challenge
+                    </button>
+                  ) : (
+                    // Normal Submit and Reset buttons
+                    <>
+                      <button
+                        onClick={handleSubmit}
+                        disabled={submitting || submitted || !solution.trim()}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-3 sm:py-4 
+                          rounded-xl text-sm sm:text-base text-white font-semibold transition-all 
+                          ${
+                            submitting || submitted || !solution.trim()
+                              ? "border border-neutral-700 text-neutral-500 cursor-not-allowed"
+                              : "border border-purple-500/50 hover:border-purple-400 hover:shadow-[0_0_15px_rgba(168,85,247,0.5)]"
+                          }
+                        `}
+                      >
+                        {submitting ? (
+                          <>
+                            <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                            <span className="hidden sm:inline">Submitting...</span>
+                            <span className="sm:hidden">Submit...</span>
+                          </>
+                        ) : submitted ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                            Submitted!
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+                            Submit Solution
+                          </>
+                        )}
+                      </button>
 
-                  <button
-                    onClick={() => setSolution(challenge.starter_code || "")}
-                    className="px-4 sm:px-6 py-3 sm:py-4 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 rounded-xl text-white text-sm sm:text-base font-medium transition-colors"
-                  >
-                    Reset Code
-                  </button>
+                      <button
+                        onClick={() => setSolution(challenge.starter_code || "")}
+                        className="px-4 sm:px-6 py-3 sm:py-4 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 rounded-xl text-white text-sm sm:text-base font-medium transition-colors"
+                      >
+                        Reset Code
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Success Message */}

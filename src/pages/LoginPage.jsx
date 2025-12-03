@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
+// ✅ Add motion import
+import { motion } from "framer-motion";
+
 const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,7 +52,12 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-4">
+    <motion.div
+      className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.6 }}
+    >
       {/* Animated Grid Background */}
       <div className="absolute inset-0 z-0">
         <div
@@ -65,29 +73,50 @@ const LoginPage = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/5 via-transparent to-pink-900/5" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
+      {/* Card container */}
+      <motion.div
+        className="relative z-10 w-full max-w-md"
+        initial={{ opacity: 0, y: 25 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+      >
         {/* Offline Indicator */}
         {isOffline && (
-          <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-2">
+          <motion.div
+            className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-2"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
             <WifiOff className="w-5 h-5 text-amber-400" />
             <p className="text-amber-400 text-sm">
               You are offline. Use Guest Mode to continue.
             </p>
-          </div>
+          </motion.div>
         )}
 
         {/* Logo */}
-        <div className="text-center mb-8">
+        <motion.div
+          className="text-center mb-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+        >
           <Link to="/" className="inline-block">
             <h1 className="text-5xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
               DevRank
             </h1>
           </Link>
           <p className="text-neutral-400 mt-2">Please login to continue.</p>
-        </div>
+        </motion.div>
 
         {/* Login Card */}
-        <div className="bg-gradient-to-br from-neutral-900/80 to-neutral-900/40 backdrop-blur-sm border border-neutral-800/50 rounded-2xl p-8">
+        <motion.div
+          className="bg-gradient-to-br from-neutral-900/80 to-neutral-900/40 backdrop-blur-sm border border-neutral-800/50 rounded-2xl p-8"
+          initial={{ opacity: 0, y: 25 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.25 }}
+        >
           {/* Back Button */}
           <Link
             to="/"
@@ -101,18 +130,27 @@ const LoginPage = () => {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-3">
+            <motion.div
+              className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
               <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
               <p className="text-rose-400 text-sm">{error}</p>
-            </div>
+            </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* FORM */}
+          <motion.form
+            onSubmit={handleSubmit}
+            className="space-y-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.35, duration: 0.6 }}
+          >
             {/* Email Input */}
             <div>
-              <label className="block text-sm text-neutral-400 mb-2">
-                Email
-              </label>
+              <label className="block text-sm text-neutral-400 mb-2">Email</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
                 <input
@@ -144,7 +182,7 @@ const LoginPage = () => {
               </div>
             </div>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -162,7 +200,7 @@ const LoginPage = () => {
                 </>
               )}
             </button>
-          </form>
+          </motion.form>
 
           {/* Divider */}
           <div className="relative my-6">
@@ -176,14 +214,17 @@ const LoginPage = () => {
             </div>
           </div>
 
-          {/* Guest Mode Button */}
-          <button
+          {/* Guest Button */}
+          <motion.button
             onClick={handleGuestLogin}
             className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700/50 hover:border-neutral-600/50 rounded-xl text-white font-semibold transition-all hover:scale-[1.02]"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.45 }}
           >
             <UserCircle className="w-5 h-5" />
             Continue as Guest
-          </button>
+          </motion.button>
 
           <p className="text-xs text-neutral-500 text-center mt-3">
             Guest mode works offline. Progress is saved locally on this device
@@ -191,7 +232,12 @@ const LoginPage = () => {
           </p>
 
           {/* Register Link */}
-          <div className="mt-6 text-center">
+          <motion.div
+            className="mt-6 text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+          >
             <p className="text-neutral-400 text-sm">
               Don't have an account?{" "}
               <Link
@@ -202,10 +248,10 @@ const LoginPage = () => {
                 Register here
               </Link>
             </p>
-          </div>
-        </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      </motion.div>
+    </motion.div>
   );
 };
 
